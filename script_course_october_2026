@@ -1,1 +1,350 @@
+library(lidR)
+library(ggplot2)
+library(sf)
+library(RCSF)
+library(rgl)
+library(gstat)
+library(terra)
+
+
+
+#1. reading the point cloud
+#read LAS point cloud
+las<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/las_area1.laz")
+las
+
+#plot the point cloud
+plot(las)#read only x,y,z
+# density: 4.76 pulses/m²  Pulse density (or "pulse rate") This is the number of laser pulses emitted per square meter.
+# 8.87 points/m² number of LiDAR returns (points) per square meter. 
+
+crs(ctg) <- "EPSG:25832" #sometimes the crs is not spcified. you can do it manually
+
+#subsetting
+las_1000<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/las_area1.laz",filter = "-drop_z_below 1000" )  #-drom points below 1000m abs!!
+plot(las_1000)
+#-keep_first	Keep only the first return of each pulse
+#-keep_last	Keep only the last return
+#-keep_single	Keep returns from pulses with only one return
+#-keep_intermediate	Keep returns that are neither first nor last
+#-drop_first	Exclude first returns
+#-drop_last	Exclude last returns
+#-drop_z_below 1000
+#-drop_z_above 900 NB is m above sea level
+
+
+
+
+
+#2.1 plot the point cloud
+plot(las, bg="red")
+plot(las, color="RGB")#if you have structrue from motion data or if you have LiDAR+RGB data you can plot in RGB
+
+las$ #what inside a las file? 
+plot(las, color="Classification", bg="white", legend=TRUE )#plot specific information of the point cloud e.g. classification 
+plot(las, color="Intensity", bg="white", legend=TRUE ) #plot intensity
+
+#exercise 1
+#open the las2
+#plot the point cloud
+#how is the pulse density?
+#check if the point cloud is fine
+#re-load the point cloud and plot it using only points above  1750
+#plot specific information of the point cloud of the area below 1900m: try to plot the number of returns - never done but you can try! do it with a blue background and adding a legend 
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz")
+plot(las2)
+las_check(las2)
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz",filter = "-drop_z_above 1750" ) 
+plot(las2)
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz",filter = "-drop_z_below 1900" ) 
+plot(las2, color="ReturnNumber", bg="blue", legend=TRUE )
+
+
+#plot the poin cloud through a transect
+#open Qgis
+p1 <- c(679368, 5155974)
+p2 <- c(679468, 5156074)
+transect<-clip_transect(las, p1, p2, width = 1) #plot point cloud transect
+
+#you might need to install the "viridis" package
+ggplot(payload(transect), aes(X,Z, color=Z  ) )+ #you can plot also other infos color=Intensity, color=Classification... check doing transect$
+  geom_point()+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")#clip the las with the shapefile of a given polygon
+
+###
+#exercise 2
+#create a transect with the new las2
+#show the Classification of a two given points of transect of 10m
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz" ) 
+p1 <- c(620207, 5156764)
+p2 <- c(620257, 5156764)
+transect<-clip_transect(las2, p1, p2, width = 10) #plot point cloud transect
+
+ggplot(payload(transect), aes(X,Z, color=Z  ) )+
+  geom_point()+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")#clip the las with the shapefile of a given polygon
+
+
+
+
+
+#2.2 plot clipped areas or circles 
+# squared area
+area_test<-st_read("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/shp/area_shp_test.shp")
+plot(area_test)
+
+#we clip the .las with the squared area
+clipped_las<-clip_roi(las, area_test)
+plot(clipped_las)#clip my las with given gps point and given radius
+
+#circle
+area_circle<-clip_circle(las, x=679526, y=5156114, radius = 50   ) #
+plot(area_circle)
+
+
+##exercise 3
+#create in Qgis a shp with a study area and cut the point cloud 
+library(sf)
+area_test<-st_read("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/shp/test2.shp")
+plot(area_test)
+clipped_las<-clip_roi(las, area_test)
+plot(clipped_las)#clip my las with given gps point and given radius
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#3. classification of the point cloud
+# Classify the point cloud using the PMF algorithm
+classification1 <- classify_ground(las, algorithm = pmf(ws = 5, th = 3)) # Here, ws is the window size and th is the height threshold
+transect <- clip_transect(classification1, p1, p2, width = 5)
+ggplot(payload(transect), aes(X, Z, color = Classification)) +
+  geom_point() +
+  ggtitle("pmf") +
+  theme_minimal() +
+  scale_color_viridis_c(option = "viridis")
+
+
+
+
+# Create progressive window sizes from 3 to 12, increasing by 3:
+# this produces four values: 3, 6, 9, and 12
+ws <- seq(3, 12, 3)
+ws
+
+# Create the same number of threshold values as window sizes,
+# evenly spaced from 0.1 to 2. These values are approximately
+# 0.1, 0.733, 1.367, and 2.
+# Each threshold pairs with a window size in order.
+th <- seq(0.1, 2, length.out = length(ws))
+th
+
+#and then we re-run the classification
+classification2<-classify_ground(las, algorithm = pmf(ws=ws, th=th) )
+transect<-clip_transect(classification2, p1, p2, width = 5)
+ggplot(payload(transect), aes(X,Z, color=Classification  ) )+
+  geom_point()+
+  ggtitle("pmf_tuned")+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")
+
+
+
+
+#CSF
+library(RCSF)
+classification_csf<-classify_ground(las, algorithm = csf()) #based on Zang et al 2016. 
+transect<-clip_transect(classification_csf, p1, p2, width = 5) #we can change the transect width if needed
+ggplot(payload(transect), aes(X,Z, color=Classification  ) )+ 
+  geom_point()+
+  ggtitle("csf")+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")
+
+
+#original?
+library(RCSF)
+las<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/las_area1.laz")
+transect<-clip_transect(las, p1, p2, width = 5) #we can change the transect width if needed
+ggplot(payload(transect), aes(X,Z, color=Classification  ) )+ 
+  geom_point()+
+  ggtitle("original")+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")
+
+
+
+###
+#exercise 4
+#in the las2, classify the point cloud using the the two methods. The pmf (not tuned) and the csf. 
+#Create a transect...Which one is the best one?  
+
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz")
+p1 <- c(620207, 5156764)
+p2 <- c(620257, 5156764)
+
+classification1<-classify_ground(las2, algorithm = pmf(ws=5, th=3) )
+transect<-clip_transect(classification1, p1, p2, width = 5)
+ggplot(payload(transect), aes(X,Z, color=Classification  ) )+
+  geom_point()+
+  ggtitle("pmf")+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")
+
+classification_csf<-classify_ground(las2, algorithm = csf()) #based on Zang et al 2016. 
+transect<-clip_transect(classification_csf, p1, p2, width = 5) #we can change the transect width if needed
+ggplot(payload(transect), aes(X,Z, color=Classification  ) )+
+  geom_point()+
+  ggtitle("csf")+
+  theme_minimal()+
+  scale_color_viridis_c(option="viridis")
+
+####
+
+
+
+
+
+
+
+
+##2. DTM creation
+#lets call back again our original las
+las<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/las_area1.laz")
+
+
+#show only the ground point in 3D
+ground<-filter_ground(las)
+plot(ground, bg="white")
+
+#dtm_tin
+dtm_tin<-rasterize_terrain(las, res = 1, algorithm = tin()) #res is in meters, use classification_csf if you dont trust your original classification
+#plot in 3D
+plot_dtm3d(dtm_tin, bg="white")
+title3d(main = "DTM TIN", color = "black", line = 2)#add title
+
+# plot in 2d
+plot(dtm_tin)
+
+#save the raster
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/results/dtm")
+writeRaster(dtm_tin, "dtm_tin.tiff") #use the .tiff
+
+
+
+#dtm_idw
+dtm_idw<-rasterize_terrain(las, res = 1, algorithm = knnidw()) #res is in meters, use classification_csf if you dont trust your original classification
+plot_dtm3d(dtm_idw, bg="white")
+title3d(main = "DTM IDW", color = "black", line = 2)#add title
+plot(dtm_idw)
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/results/dtm")
+writeRaster(dtm_idw, "dtm_idw.tiff") #use the .tiff
+
+
+
+
+#dtm_kriging no tuning
+#dtm_kriging<-rasterize_terrain(las, res = 1, algorithm = kriging()) #res is in meters, use classification_csf if yoo dont trust your original classification
+#plot_dtm3d(dtm_kriging, bg="white")
+#title3d(main = "DTM KRIGING", color = "black", line = 2)
+#plot(dtm_kriging)
+#setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/results/dtm")
+#writeRaster(dtm_idw, "dtm_idw.tiff") #use the .tiff
+#dtm_kriging k=10
+#dtm_kriging_k10<-rasterize_terrain(las, res = 1, algorithm = kriging(k=10)) #res is in meters, use classification_csf if yoo dont trust your original classification
+#plot_dtm3d(dtm_kriging_k10)
+#dtm_kriging k=150
+#dtm_kriging_k150<-rasterize_terrain(las, res = 1, algorithm = kriging(k=150)) #res is in meters, use classification_csf if yoo dont trust your original classification
+#plot_dtm3d(dtm_kriging_k150)
+
+
+
+
+
+#slope and aspect
+#this function allows to create raster of slope and aspect 
+dtm_products<-terrain(dtm_tin, v=c("slope", "aspect"), unit="degree" )
+plot(dtm_products) #plot both
+plot(dtm_products$aspect, main="aspect") #you can just plot slope or aspect
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/dtm")
+writeRaster(dtm_products$slope, "C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/dtm/Slope.tiff")
+
+
+#exercise 5?
+#create a dtm using a tin() and knnidw() in the other study area (las_area2)
+#get slope and aspect 
+#save on your local computr the aspect and slope as .tiff
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz")
+library(gstat)
+#dtm_tin
+dtm_tin<-rasterize_terrain(las2, res = 1, algorithm = tin()) #res is in meters, use classification_csf if you dont trust your original classification
+#plot in 3D
+plot_dtm3d(dtm_tin, bg="white")
+library(rgl) #to create the title
+title3d(main = "DTM TIN area2", color = "black", line = 2)
+
+# plot in 2d
+plot(dtm_tin)
+
+#save the raster
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/dtm/")
+library(raster)
+writeRaster(dtm_tin, "dtm_tin_area2.tiff") #use the .tiff
+
+
+#dtm_idw
+dtm_idw<-rasterize_terrain(las2, res = 1, algorithm = knnidw()) #res is in meters, use classification_csf if yoo dont trust your original classification
+plot_dtm3d(dtm_idw, bg="white")
+title3d(main = "DTM IDW area2", color = "black", line = 2)
+plot(dtm_idw)
+writeRaster(dtm_idw, "dtm_idw_area2.tiff") #use the .tiff
+
+
+library(raster)
+dtm_products<-terrain(dtm_tin, v=c("slope", "aspect"), unit="degree" )
+plot(dtm_products) #plot both
+plot(dtm_products$aspect, main="aspect") #you can just plot slope or aspect
+writeRaster(dtm_products$slope, "C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/dtm/Slope_area2.tiff")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #
