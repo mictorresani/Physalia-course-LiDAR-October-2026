@@ -423,4 +423,247 @@ max(nlas_right_filtered$Z)
 
 
 
+
+
+
+#forgot from day1
+#to save the las!
+writeLAS(las, file.path(out_dir, ".laz or .las"))
+las<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/las_area1.laz")
+
+
+#4 DSM ad CHM creation
+#DSM creation
+dsm<-rasterize_canopy(las, res=1, algorithm = dsmtin()) #you can use also the p2r()
+dsm
+plot(dsm)
+#create a folder where to save the DSM
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/dsm/")
+writeRaster(dsm, "dsm.tiff")
+
+#CHM creation. 
+#we use the same algorithm but for DSM we use the las, for the CHM we use the nlas
+chm<-rasterize_canopy(nlas_right_filtered, res=1, algorithm = dsmtin())
+plot(chm, main="chm_no filling")
+#create a folder where to save the CHM
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/chm")
+writeRaster(chm, "chm.tiff")
+
+#adding the filling option1 only using the p2r
+chm_filled1<-rasterize_canopy(nlas_right_filtered, res=1, algorithm = p2r(subcircle = 0.2))
+plot(chm_filled1, main="chm_filled1")
+writeRaster(chm_filled1, "chm_filled1.tiff")
+
+#adding the filling option1
+chm_filled2<-rasterize_canopy(nlas_right_filtered, res=1, algorithm = p2r(subcircle = 0.2,na.fill = tin() )) #use 2 filling, one id based on subcircle and one on filling NA based on DTM algorithm
+plot(chm_filled2, main="chm_filled2")
+setwd("C:/Users/MicTorresani/Documents/dati_lidar_phisalia")
+writeRaster(chm_filled2, "chm_filled2.tiff")
+
+
+#exercise 7
+#create a 1 new CHM with the area2 with a spatial resolution of 2m. one using the dsmtin()
+las2<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/data/starting_data/las/area2/DownloadService/las_area2.laz")
+chm_area_2<-rasterize_canopy(nlas_right_filtered2, res=1, algorithm = dsmtin())
+plot(chm_area_2, main="chm_no filling")
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/chm")
+writeRaster(chm_area_2, "chm_area_2_at_1m.tiff")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#5. Tree detection and segmentation
+library(sf)
+#treetop with las. it does find the tree, but the height is wrong! always use the nlas!!
+tree_top<-locate_trees(las, lmf(ws=5))
+plot(tree_top)
+#create a folder where to save the ttops
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/tree_top/")
+st_write(tree_top, "tree_top.shp", layer_options = "SHPT=POINTZ")
+
+#treetop with nlas using ws of 5m (suggested1/3)
+tree_top_nlas<-locate_trees(nlas_right_filtered, lmf(ws=5))
+plot(tree_top_nlas)
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/tree_top")
+st_write(tree_top_nlas, "tree_top_nlas.shp", delete_layer = TRUE, layer_options = "SHPT=POINTZ")
+plot(chm)
+plot(st_geometry(tree_top_nlas), add=TRUE, pch=3)
+
+#treetop with nlas using ws of 10m (suggested2/3)
+tree_top_nlas10<-locate_trees(nlas_right_filtered, lmf(ws=10))
+plot(tree_top_nlas10)
+plot(chm)
+plot(st_geometry(tree_top_nlas10), add=TRUE, pch=3)
+st_write(tree_top_nlas10, "tree_top_nlas10.shp", delete_layer = TRUE, layer_options = "SHPT=POINTZ")
+
+#treetop with nlas using ws with function (suggested3/3!!)
+#function starting from 3m
+f <- function(x) {x * 0.1 + 3} #create a function that makes a mw that increase from 3 (whan height is 0) and increase of 0.1 for each meter. you can change the 0.1 and increas eto 0.2...
+heights <- seq(0,40,5)
+ws <- f(heights)
+plot(heights, ws, type = "l", ylim = c(0,6))
+#testing tree top detection with this function
+tree_top_function_right<-locate_trees(nlas_right_filtered, lmf(f))
+plot(tree_top_function_right)
+plot(chm)
+plot(st_geometry(tree_top_function_right), add=TRUE, pch=3)
+st_write(tree_top_function_right, "tree_top_function.shp", delete_layer = TRUE, layer_options = "SHPT=POINTZ")
+
+#function starting from 4m
+f <- function(x) {x * 0.1 + 4} #create a function that makes a mw that increase from 3 (whan height is 0) and increase of 0.1 for each meter. you can change the 0.1 and increas eto 0.2...
+heights <- seq(0,40,5)
+ws <- f(heights)
+plot(heights, ws, type = "l", ylim = c(0,6))
+#testing tree top detection with this function
+tree_top_function_right2<-locate_trees(nlas_right_filtered, lmf(f))
+plot(tree_top_function_right2)
+st_write(tree_top_function_right2, "tree_top_function2.shp", delete_layer = TRUE, layer_options = "SHPT=POINTZ")
+plot(chm_filled2)
+plot(st_geometry(tree_top_function_right2), add=TRUE, pch=3)
+
+
+#exercise 8
+#load the area2
+#create a nlas_right_filtered (with filter 0, 40) in the area 2
+#locate trees using  the f function 
+#function starting from 4m
+f <- function(x) {x * 0.1 + 3} #create a function that makes a mw that increase from 3 (whan height is 0) and increase of 0.1 for each meter. you can change the 0.1 and increas eto 0.2...
+heights <- seq(0,40,5)
+ws <- f(heights)
+plot(heights, ws, type = "l", ylim = c(0,6))
+#testing tree top detection with this function
+tree_top_function_right<-locate_trees(nlas_right_filtered2, lmf(f))
+st_write(tree_top_function_right, "tree_top_function2_area2.shp", delete_layer = TRUE, layer_options = "SHPT=POINTZ")
+
+
+
+
+
+
+
+
+
+#tree segmentation
+#algorithms that work with point cloud
+#dalponte2016
+algorithm<-dalponte2016(chm, tree_top_function_right)
+trees_segmented_dalponte<-segment_trees(nlas_right_filtered, algorithm)
+trees_segmented_dalponte
+plot(trees_segmented_dalponte, color="treeID")
+tree1<-filter_poi(trees_segmented_dalponte, treeID==121)
+plot(tree1)
+
+#li2012
+algorithm2<-li2012()
+trees_segmented<-segment_trees(nlas_right_filtered, algorithm2)
+trees_segmented
+plot(trees_segmented, color="treeID")
+tree1<-filter_poi(trees_segmented, treeID==120)
+plot(tree1)
+
+
+
+
+
+
+#6. crown metric
+#6.1 func = .stdtreemetrics standard tree metrics, Z, area, geometry
+#create a shp of crown with basic information using conve and concave. Z does not change. just the shape change a bit. 
+#convex
+crown_dalponte<-crown_metrics(trees_segmented_dalponte, func = .stdtreemetrics, geom = "convex") #you can use also concave
+#create a folder where to save the crowns
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/crown_metrics")
+st_write(crown_dalponte, "crown_dalponte_convex.shp", delete_layer = TRUE)
+#concave
+crown_dalponte<-crown_metrics(trees_segmented_dalponte, func = .stdtreemetrics, geom = "concave") #more rough
+st_write(crown_dalponte, "crown_dalponte_concave.shp", delete_layer = TRUE)
+
+#lets check what we just created
+crown_dalponte
+
+plot(crown_dalponte["Z"]) 
+plot(crown_dalponte["convhull_area"])
+
+
+
+##6.2 func = .stdmetrics_? standard metrics for z,i....see below
+crown_dalponte_metrics_z<-crown_metrics(trees_segmented_dalponte, func = .stdmetrics_z, geom = "convex") #you can use also concave
+crown_dalponte_metrics_z
+st_write(crown_dalponte_metrics_i, "crown_dalponte_metrics_i.shp", delete_layer = TRUE)
+#z: refers to the elevation
+#i: refers to the intensity
+#rn: refers to the return number
+
+
+#we can plot all the infos singularly
+plot(crown_dalponte_metrics_z["zsd"])
+plot(crown_dalponte_metrics_z["zmax"])
+plot(crown_dalponte_metrics_z["zq80"])
+
+
+#exercise 9
+#using dalponte2016 get the point cloud of tree with ID=46
+#create a shp of crown with basic information using concave
+#create a shp of crown with stdmetrics_z information using convex
+#save both dataset as shp
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#7. cloud metric
+#cloud information at cloud level, for the whole point cloud
+metric<-cloud_metrics(nlas_right_filtered,func = .stdmetrics_z )
+
+#cloud information at plot level wit a given point, or adding a polygon
+test_points<-st_read("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/shp/plot_data.shp")
+metric_plot<-plot_metrics(nlas_right_filtered, func=.stdmetrics_z, radius=13, test_points) #set radius of your plot
+
+
+#exercise 10
+#get the cloud metric for the whole area2
+#create 5 random points in qgis with your possible plots and calculate, around a radius of 10m, the stdmetrics_z  
+#cloud information at plot level wit a given point, or adding a polygon
+test_points<-st_read("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/shp/exercise10.shp")
+las<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/las/las_area2.laz")
+nlas_right_filtered<-normalize_height(las, tin()) #this is the right approach using the nomalize_height function and adding, adding the las file and one of the thrree algorithm used to create the DTM
+metric_plot<-plot_metrics(nlas_right_filtered, func=.stdmetrics_z, radius=13, test_points) #set radius of your plot
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/exercises/")
+st_write(metric_plot, "metrics_exercise10.shp", delete_layer = TRUE)
+
+
+
+
+
+
+
+
+
+
 #
