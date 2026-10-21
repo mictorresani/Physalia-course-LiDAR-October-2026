@@ -624,4 +624,199 @@ plot(new_metric)
 
 
 
+
+
+
+
+
+# volume 
+# ALS forest-volume mapping with a Random Forest
+#
+# The script links field-measured plot volume to ALS height metrics, evaluates
+# the model, and predicts volume for 25 m raster cells.
+#
+# Field plots are circles with a 12 m radius (about 452 m2). Raster cells are
+# 25 x 25 m squares (625 m2), so the spatial supports are similar but not equal.
+
+## 1. Parameters to edit ------------------------------------------------------
+shp_areas <- "C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/shp/plot_data.shp" # One point per plot
+las <- nlas_right_filtered             # Normalized LAS object already in R
+volume_field <- "volume"               # Field containing total plot volume (m3)
+
+# Check that Z contains height above ground, not terrain elevation. Values near
+# 945 m, for example, indicate that the cloud may still need normalization.
+
+radius_m <- 12
+resolution_m <- 25
+seed_model <- 123
+output_folder <- "C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/volume"
+dir.create(output_folder, showWarnings = FALSE, recursive = TRUE)
+
+## 2. Read plots and create circular plot areas -------------------------------
+areas <- sf::st_read(shp_areas, quiet = TRUE)
+areas$plot_id <- seq_len(nrow(areas))
+
+# Buffer each plot center by 12 m to match the field-plot radius.
+circular_area <- sf::st_buffer(areas, dist = radius_m, nQuadSegs = 60)
+
+## 3. Calculate ALS metrics for each field plot --------------------------------
+metric_plot <- vector("list", nrow(circular_area))
+
+for (i in seq_len(nrow(circular_area))) {
+  las_plot <- lidR::clip_roi(las, sf::st_geometry(circular_area[i, ]))
+  metrics <- lidR::cloud_metrics(las_plot, func = lidR::.stdmetrics_z)
+  metric_plot[[i]] <- as.data.frame(metrics)
+  metric_plot[[i]]$plot_id <- areas$plot_id[i]
+}
+
+# Join ALS metrics to the measured volume for the same plot.
+metric_plot <- do.call(rbind, metric_plot)
+areas_data <- sf::st_drop_geometry(areas)
+training_data <- merge(
+  metric_plot,
+  areas_data[, c("plot_id", volume_field)],
+  by = "plot_id",
+  sort = FALSE
+)
+names(training_data)[names(training_data) == volume_field] <- "volume_m3"
+
+# !!! not to do if the m3 are already i/ha Convert total plot volume to volume per hectare for mapping.
+training_data$volume_m3_ha <- training_data$volume_m3 / (pi * radius_m^2 / 10000)
+
+# Keep the ALS metrics as predictors; exclude IDs and measured response columns.
+metric_names <- setdiff(
+  names(training_data),
+  c("plot_id", "volume_m3", "volume_m3_ha")
+)
+model_formula <- stats::reformulate(metric_names, response = "volume_m3_ha")
+
+## 4. Split plots into training (80%) and validation (20%) ---------------------
+# The validation plots are held aside until the final model evaluation.
+set.seed(seed_model)
+training_rows <- sample(
+  seq_len(nrow(training_data)),
+  size = floor(0.8 * nrow(training_data))
+)
+
+training_set <- training_data[training_rows, ]
+metric_names <- setdiff(
+  names(training_set),
+  c("plot_id", "volume", "volume_m3")
+)
+model_formula <- stats::reformulate(metric_names, response = "volume_m3")
+validation_set <- training_data[-training_rows, ]
+
+## 5. Five-fold cross validation on the training plots -------------------------
+# Each fold takes a turn as the test fold; the other four folds train the model.
+number_of_folds <- 5
+fold_id <- sample(rep(seq_len(number_of_folds), length.out = nrow(training_set)))
+cv_prediction <- rep(NA_real_, nrow(training_set))
+
+for (fold in seq_len(number_of_folds)) {
+  fold_model <- ranger::ranger(
+    formula = model_formula,
+    data = training_set[fold_id != fold, c("volume_m3", metric_names)],
+    num.trees = 500,
+    mtry = max(1, floor(sqrt(length(metric_names)))),
+    min.node.size = 5,
+    seed = seed_model + fold
+  )
+  cv_prediction[fold_id == fold] <- stats::predict(
+    fold_model,
+    data = training_set[fold_id == fold, metric_names, drop = FALSE]
+  )$predictions
+}
+
+cv_observed <- training_set$volume_m3
+cv_rmse <- sqrt(mean((cv_observed - cv_prediction)^2))
+cv_bias <- mean(cv_prediction - cv_observed)
+cv_r2 <- 1 - sum((cv_observed - cv_prediction)^2) /
+  sum((cv_observed - mean(cv_observed))^2)
+
+## 6. Fit the final model and evaluate on the held-out validation plots --------
+# The final model uses all 80% training plots, then predicts the 20% validation set.
+final_model <- ranger::ranger(
+  formula = model_formula,
+  data = training_set[, c("volume_m3", metric_names)],
+  num.trees = 1000,
+  mtry = max(1, floor(sqrt(length(metric_names)))),
+  min.node.size = 5,
+  importance = "permutation",
+  seed = seed_model
+)
+
+validation_prediction <- stats::predict(
+  final_model,
+  data = validation_set[, metric_names, drop = FALSE]
+)$predictions
+validation_observed <- validation_set$volume_m3
+validation_rmse <- sqrt(mean((validation_observed - validation_prediction)^2))
+validation_bias <- mean(validation_prediction - validation_observed)
+validation_r2 <- 1 - sum((validation_observed - validation_prediction)^2) /
+  sum((validation_observed - mean(validation_observed))^2)
+
+write.csv(
+  data.frame(
+    evaluation = c("5-fold cross validation", "20% validation set"),
+    RMSE_m3_ha = c(cv_rmse, validation_rmse),
+    Bias_m3_ha = c(cv_bias, validation_bias),
+    R_squared = c(cv_r2, validation_r2)
+  ),
+  file.path(output_folder, "model_evaluation.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  data.frame(
+    plot_id = validation_set$plot_id,
+    observed_m3_ha = validation_observed,
+    predicted_m3_ha = validation_prediction
+  ),
+  file.path(output_folder, "validation_predictions.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  data.frame(
+    metric = names(final_model$variable.importance),
+    importance = unname(final_model$variable.importance)
+  ),
+  file.path(output_folder, "metric_importance.csv"),
+  row.names = FALSE
+)
+saveRDS(final_model, file.path(output_folder, "random_forest_model.rds"))
+
+## 7. Calculate 25 m ALS metrics and predict volume across the map --------------
+# pixel_metrics creates one set of ALS metrics for each 25 x 25 m square cell.
+metric_raster <- lidR::pixel_metrics(
+  las,
+  func = lidR::.stdmetrics_z,
+  res = resolution_m
+)
+
+
+prediction_raster <- terra::predict(
+  metric_raster,
+  final_model,
+  fun = function(model, data, ...) {
+    stats::predict(model, data = data)$predictions
+  },
+  na.rm = TRUE,
+  filename = file.path(output_folder, "predicted_volume_m3_ha_25m.tif"),
+  overwrite = TRUE
+)
+
+cat("5-fold CV RMSE (m3/ha):", round(cv_rmse, 2), "\n")
+cat("5-fold CV R-squared:", round(cv_r2, 3), "\n")
+cat("Validation RMSE (m3/ha):", round(validation_rmse, 2), "\n")
+cat("Validation R-squared:", round(validation_r2, 3), "\n")
+cat("Prediction raster:", file.path(output_folder, "predicted_volume_m3_ha_25m.tif"), "\n")
+
+
+
+
+
+
+
+
 #
