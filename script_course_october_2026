@@ -819,4 +819,102 @@ cat("Prediction raster:", file.path(output_folder, "predicted_volume_m3_ha_25m.t
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#09 work with big data
+library(mapview)
+ctg<-readLAScatalog("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/las/lascatalog/")
+st_crs(ctg) <- "EPSG:2056"
+mapview::mapview(ctg@data, map.types = "Esri.WorldImagery")
+
+
+#cut in smaller areas
+opt_output_files(ctg) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/las/lascatalog_smaller/tile_{XLEFT}_{YBOTTOM}") # label outputs based on coordinates
+opt_chunk_buffer(ctg) <- 0
+opt_chunk_size(ctg) <- 125 # retile to 125 m
+small <- catalog_retile(ctg) # apply retile
+plot(small) # some plotting
+
+#small_tile<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/las/lascatalog_smaller/tile_2822000_1186250.las")
+#small_tile
+#plot(small_tile)
+#las_check(small_tile)
+
+
+#9.1ctg
+ctg<-readLAScatalog("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/las/lascatalog_smaller/")
+st_crs(ctg) <- "EPSG:2056"
+plot(ctg)
+
+#create a las_catalog_result folder. Within this folder create the following folders: dtm, nlas, chm, chm2, ttops, nlas_segmented, segmented, pixel_metrics
+
+#9.2.dtm
+#tin
+opt_output_files(ctg) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/dtm/{*}_dtm") # set folder output
+ctg_dtm <- rasterize_terrain(ctg, res = 1, algorithm = tin()) # normalize
+
+#9.3.create nlas
+opt_output_files(ctg) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/nlas/", "/{*}_nlas") # set folder output
+ctg_nlas <- normalize_height(ctg, tin())
+
+#9.4. create CHM
+ctg_nlas <- readLAScatalog("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/nlas/")
+opt_output_files(ctg_nlas) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/chm/", "/{*}_chm") # settare cartella output
+st_crs(ctg_nlas) <- "EPSG:2056"
+ctg_chm <- rasterize_canopy(ctg_nlas, res = 1, algorithm = dsmtin()) 
+
+
+#9.5.locate trees
+f <- function(x) {x * 0.1 + 4} #starting from 3, to check
+heights <- seq(0,40,5)
+ws <- f(heights)
+crs(ctg_nlas) <- "EPSG:2056"
+opt_output_files(ctg_nlas) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/ttops", "/{*}_ttops") # set folder output
+ctg_ttops_function <- locate_trees(ctg_nlas, lmf(f))
+
+
+#9.6.tree segmentation and tree metric in one file
+opt_output_files(ctg_nlas) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/ttops/chm2", "/chm_{*}") #set folder output
+chm <- rasterize_canopy(ctg_nlas, 1, dsmtin())
+opt_output_files(ctg_nlas) <- ""
+ttops <- locate_trees(ctg_nlas, lmf(f), uniqueness = "bitmerge") #"bitmerge" it merges overlapping detections, you can also use "none" that Keep all (duplicates!), not raccomended
+opt_output_files(ctg_nlas) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/nlas_segmented", "/{*}_segmented") #set folder output
+algo <- dalponte2016(chm, ttops)
+ctg_segmented <- segment_trees(ctg_nlas, algo)
+#
+ctg_nlas_seg <- readLAScatalog("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/nlas_segmented")
+opt_output_files(ctg_nlas) <- paste0("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/segmented", "/{*}_segmented") #set folder output
+crowns_dalponte <- crown_metrics(ctg_nlas_seg, func = .stdmetrics_z, geom = "convex") 
+st_crs(crowns_dalponte) <- 2056  
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/segmented") #set folder output
+st_write(
+  crowns_dalponte,
+  "trees_crown_and_metrics.shp",
+  delete_layer = TRUE
+)
+
+
+#9.7. metrics in one file
+#at raster level
+ctg_nlas_seg <- readLAScatalog("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/nlas_segmented")
+stmetric_pixel <- pixel_metrics(ctg_nlas_seg, func = .stdmetrics_z, 10) # calculate all the z metrics at 10 m
+crs(stmetric_pixel) <- "EPSG:2056"
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/lascatalog/pixel_metrics/") #settare cartella output
+writeRaster(stmetric_pixel, "metriche_z_raster.tiff")
+
+
+
 #
