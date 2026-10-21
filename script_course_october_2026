@@ -599,4 +599,29 @@ st_write(metric_plot, "metrics_exercise10.shp", delete_layer = TRUE)
 
 
 
+
+
+
+#day3
+
+#8.pixel level
+#get information at pixel level
+las<-readLAS("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/starting_data/las/las_area1.laz")
+nlas_right_filtered<-normalize_height(las, tin()) #this is the right approach using the 
+metric_pixel<-pixel_metrics(nlas_right_filtered,func = .stdmetrics_z, 5 ) #compare to cloud_metric you have to add a number that is the size of the pizel
+plot(metric_pixel) #see all the results
+plot(metric_pixel$zmean)
+setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/")
+writeRaster(metric_pixel$zmean, "pixel_metric_mean5m.tiff") #to save just the mean
+
+
+#example, you can build up your own metric. eg. CV calculation 
+#first build up the function. CV= sd/mean
+cv<-function(z){coef_var<-sd(z)/mean(z)    }
+new_metric<-pixel_metrics(nlas_right_filtered, ~cv(z=Z), 10 )
+plot(new_metric)
+
+
+
+
 #
