@@ -118,28 +118,6 @@ plot(clipped_las)#clip my las with given gps point and given radius
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #3. classification of the point cloud
 # Classify the point cloud using the PMF algorithm
 classification1 <- classify_ground(las, algorithm = pmf(ws = 5, th = 3)) # Here, ws is the window size and th is the height threshold
@@ -416,16 +394,6 @@ max(nlas_right_filtered$Z)
 
 
 
-
-
-
-
-
-
-
-
-
-
 #forgot from day1
 #to save the las!
 writeLAS(las, file.path(out_dir, ".laz or .las"))
@@ -468,20 +436,6 @@ chm_area_2<-rasterize_canopy(nlas_right_filtered2, res=1, algorithm = dsmtin())
 plot(chm_area_2, main="chm_no filling")
 setwd("C:/Users/MicTorresani/OneDrive - Scientific Network South Tyrol/varie/corsi/physalia/LiDAR 2025/2026/results/chm")
 writeRaster(chm_area_2, "chm_area_2_at_1m.tiff")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -552,10 +506,6 @@ st_write(tree_top_function_right, "tree_top_function2_area2.shp", delete_layer =
 
 
 
-
-
-
-
 #tree segmentation
 #algorithms that work with point cloud
 #dalponte2016
@@ -597,8 +547,6 @@ crown_dalponte
 plot(crown_dalponte["Z"]) 
 plot(crown_dalponte["convhull_area"])
 
-
-
 ##6.2 func = .stdmetrics_? standard metrics for z,i....see below
 crown_dalponte_metrics_z<-crown_metrics(trees_segmented_dalponte, func = .stdmetrics_z, geom = "convex") #you can use also concave
 crown_dalponte_metrics_z
@@ -619,21 +567,6 @@ plot(crown_dalponte_metrics_z["zq80"])
 #create a shp of crown with basic information using concave
 #create a shp of crown with stdmetrics_z information using convex
 #save both dataset as shp
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
